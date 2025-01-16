@@ -1,14 +1,15 @@
-import psycopg2
+import os, psycopg2
+from dotenv import load_dotenv
+load_dotenv()
 
 db_params = {
     "dbname" : "presales_db",
     "user" : "presales_db_owner",
-    "password" : "XWErU30tpDPC",
-    "host" : "ep-shy-rice-a5m1kosp.us-east-2.aws.neon.tech",
-    "port" : "5432",
+    "password" : os.getenv('PASSWORD'),
+    "host" : os.getenv('HOST'),
+    "port" : os.getenv('PORT'),
     "sslmode" : "require"
 }
-
 
 def store_conversation(user_question, bot_answer):
     """Store a conversation in the database."""
