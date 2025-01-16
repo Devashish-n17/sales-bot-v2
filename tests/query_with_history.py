@@ -113,7 +113,6 @@ def create_prompt_template():
 
         context: {context}
         input: {user_query}
-        rephrased_query={rephrased_query}
 
         answer:
 

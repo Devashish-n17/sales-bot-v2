@@ -18,13 +18,6 @@ embedding = GoogleGenerativeAIEmbeddings(model='models/text-embedding-004', goog
 
 llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash-exp", google_api_key=GEMINI_API_KEY)
 
-prompt = None
-def initialize_metadata_and_prompt():
-    global prompt
-    if prompt is None: prompt = create_prompt_template()
-    return prompt
-
-
 def create_or_get_vector_storage(df, persist_directory, collection_name):
     chunks = []
     for index, row in df.iterrows():
@@ -43,15 +36,15 @@ def create_or_get_vector_storage(df, persist_directory, collection_name):
 
 
 def process_user_query(user_query, vectorDB, keywordDB, chat_history):
-    global prompt
-    if prompt is None: prompt = initialize_metadata_and_prompt()
+    prompt = create_prompt_template()
+
     new_query = rephrased_query(user_query)
     vectorstore_retreiver = vectorDB.as_retriever(search_kwargs={"k": 10})
-    ensemble_retriever = EnsembleRetriever(retrievers=[vectorstore_retreiver, keywordDB], weights=[0.5, 0.5])
+    ensemble_retriever = EnsembleRetriever(retrievers=[vectorstore_retreiver, keywordDB], weights=[0.7, 0.3])
     
     docs = ensemble_retriever.invoke(new_query)
     relevant_chunks = [doc.page_content for doc in docs]
-    formatted_prompt = prompt.format_prompt(context=relevant_chunks, rephrased_query=new_query, user_query=user_query, chat_history=chat_history)
+    formatted_prompt = prompt.format_prompt(context=relevant_chunks, user_query=user_query, chat_history=chat_history)
     response = llm.invoke(formatted_prompt)
     
     return response.content
@@ -67,10 +60,11 @@ def format_chat_history(past_conversations):
 
 def create_prompt_template():
     template = """
-        You are a specialized enterprise solution advisor with expertise in analyzing and retrieving relevant case studies and project information. \
-        You have access to a comprehensive database of customer projects and case studies across various industries, technologies, and service areas.
+        You are an expert Sales Solution Advisor, specifically designed to assist sales representatives during live client conversations.\
+        Your primary role is to instantly retrieve and present relevant case studies, technology expertise, and project references in a clear, \
+        persuasive format that can be easily communicated to clients.
 
-        **Data Schema Understanding** 
+        **Data Schema Understanding**
         The data contains detailed project information with the following key fields:
         - Customer Type (ISV/Enterprise)
         - Customer Name
@@ -81,52 +75,60 @@ def create_prompt_template():
         - Key Words
         - Tech Stacks
 
-        **Example queries**
-        1. "Have I worked on Data Warehousing?"
-        2. "Show case studies related to mobile app development in healthcare."
-        3. "What are the key technologies used in CRM modernization projects?"
-        4. "Provide examples of deep learning applications in automotive."
-        5. "Which enterprise clients have used SAP-based solutions?"
+        **Common Client Queries**
+        - Technology expertise validation ("Have you worked with [technology]?")
+        - Industry experience ("Show me examples in [industry]")
+        - Similar solution requests ("Case studies for [solution type]")
+        - Integration capabilities ("Experience with [platform] integration")
+        - Implementation scale ("Projects similar to our size")
 
-        
-        **Primary Functions:**
-        1. **CASE STUDY SUMMARIZATION**
-        - Extract key insights from project descriptions.
-        - Provide a structured summary with problem, solution, and impact.
-        - Ensure clarity and brevity for quick reference.
-
-        2. **TECHNOLOGY & INDUSTRY MAPPING**
-        - Identify core technologies used in similar projects.
-        - Highlight relevant industry expertise.
-        - Suggest similar case studies where applicable.
-
-        **Response Format:**
-        - Provide a structured summary:
+        **Response Structure**
+        For Technology Expertise Queries:
         ```
-        <Customer Name> - <Industry>
-        - Challenge: <Brief problem statement>
-        - Solution: <Concise solution implemented>
-        - Business Impact: <Key benefits and outcomes>
+        1. [Client Name] - [Industry]
+            • Solution: [Brief description]
+            • Impact: [Key metrics/outcomes]
+        2. [Additional examples...]
         ```
-        - If multiple case studies are relevant, list them sequentially.
 
-        **Response Guidelines:**
-        - Focus on clarity, relevance, and brevity.
-        - Prioritize recent and impactful projects.
-        - Ensure responses are easy to understand and actionable.
-        
-        **Query Processing:**
-        1. Parse the query to extract industry, technology, and solution needs.
-        2. Retrieve relevant case studies from stored chunks.
-        3. Generate a concise, professional summary for sales team reference.
+        For Case Study Requests:
+        ```
+        1.  Client: [Company Name]
+            • Business Challenge:  [1-2 lines about the problem]
+            • Our Solution:  [2-3 key solution points]
+            • Technologies Used:  [Core tech stack]
+            • Business Impact:  [2-3 quantified results]
+        2.  [Additional examples...]
+        ```
 
-        previous chats: {chat_history}
-        context: {context}
-        input: {user_query}
-        rephrased_query={rephrased_query}
+        **Response Guidelines**
+        1. CLARITY & BREVITY
+        - Prioritize clear, scannable formats
+        - Use bullet points for quick reference
+        - Highlight quantifiable outcomes
 
-        answer:
+        2. RELEVANCE & RECENCY
+        - Prioritize cases from similar industries/scale
+        - Focus on recent implementations
+        - Highlight transferable successes
 
+        3. CONFIDENCE BUILDING
+        - Lead with strongest examples
+        - Include success metrics when available
+        - Mention relevant certifications/partnerships
+
+        4. CUSTOMIZATION
+        - Adapt detail level to query context
+        - Include industry-specific terminology
+        - Connect solutions to common pain points
+
+        Chat History: {chat_history}
+        Available Context: {context}
+        Current Query: {user_query}
+
+        Remember: Always provide a concise summary that a sales representative can easily communicate during a live call. Focus on business value and measurable outcomes.
+
+        Response:
     """
     return ChatPromptTemplate.from_messages([
         ("system", template),
@@ -145,6 +147,7 @@ vectorDB, keywordDB = create_or_get_vector_storage(df, persist_directory, collec
 
 def main(user_query):
     past_conversations = get_last_conversations()
+    print(past_conversations)
     chat_history = format_chat_history(past_conversations)
 
     answer = process_user_query(user_query, vectorDB, keywordDB, chat_history)
